@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Preenchimento de termos de empréstimo e devolução de equipamentos."
+    />
+    <title>Assinador de termos</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">PLURISMIDIA - TI</p>
+          <h1>Assinador de termos</h1>
+          <p class="subtitle">
+            Preencha um termo de empréstimo ou devolução e baixe o PDF pronto
+            para assinatura.
+          </p>
+        </div>
+        <span class="status-pill">Versão web</span>
+      </header>
+
+      <form id="term-form" class="card">
+        <section class="section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">01</p>
+              <h2>Tipo de termo</h2>
+            </div>
+            <p class="muted">Fluxo disponível nesta versão.</p>
+          </div>
+          <div class="term-types" role="radiogroup" aria-label="Tipo de termo">
+            <label class="term-type">
+              <input type="radio" name="termType" value="devolucao" checked />
+              <span>
+                <strong>Devolução</strong>
+                <small>Registrar o recebimento do equipamento</small>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section id="return-fields" class="section hidden-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">02</p>
+              <h2>Arquivo do termo</h2>
+            </div>
+            <p class="muted">Selecione o PDF do termo de devolução.</p>
+          </div>
+          <label class="upload">
+            <input id="pdf-file" type="file" accept="application/pdf,.pdf" />
+            <span class="upload-icon">↑</span>
+            <span>
+              <strong id="file-name">Selecionar PDF base</strong>
+              <small>O navegador não envia o arquivo para nenhum servidor.</small>
+            </span>
+          </label>
+          <p class="file-help">O arquivo permanece no seu computador durante todo o processo.</p>
+        </section>
+
+        <section id="return-data" class="section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">03</p>
+              <h2>Dados de devolução</h2>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              Data de devolução
+              <input id="return-date" name="returnDate" type="date" />
+            </label>
+            <label class="field">
+              Condição do equipamento
+              <select id="return-condition" name="returnCondition">
+                <option>Em perfeito estado</option>
+                <option>Apresentando defeito</option>
+                <option>Faltando peças ou acessórios</option>
+              </select>
+            </label>
+            <label class="field field-wide">
+              Responsável pelo recebimento
+              <select id="receiver" name="receiver">
+                <option>João Vitor Nogueira da Silva</option>
+                <option>Brian Farias Cavalcanti</option>
+                <option>Thauany Mendes Pereira</option>
+                <option value="outro">Outro</option>
+              </select>
+              <input id="other-receiver" name="otherReceiver" type="text" placeholder="Digite o nome do responsável" hidden />
+            </label>
+          </div>
+        </section>
+
+        <div class="actions">
+          <p id="feedback" class="feedback" role="status"></p>
+          <button id="preview-button" class="secondary-button" type="button">
+            Visualizar prévia
+          </button>
+          <button class="primary-button" type="submit">Gerar termo em PDF</button>
+        </div>
+      </form>
+
+      <div id="preview-modal" class="preview-modal" hidden>
+        <div class="preview-dialog" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+          <div class="preview-header">
+            <h2 id="preview-title">Prévia do termo de devolução</h2>
+            <button id="close-preview" class="close-button" type="button" aria-label="Fechar prévia">×</button>
+          </div>
+          <div class="preview-content">
+            <canvas id="preview-canvas" aria-label="Prévia do PDF"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        <span>Dados processados localmente no navegador.</span>
+        <span>Consulta AD e pasta de rede: integração futura com a TI.</span>
+      </footer>
+    </main>
+  </body>
+</html>
