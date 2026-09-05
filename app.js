@@ -13,6 +13,16 @@ const previewCanvas = document.querySelector("#preview-canvas");
 const closePreview = document.querySelector("#close-preview");
 const receiverSelect = document.querySelector("#receiver");
 const otherReceiver = document.querySelector("#other-receiver");
+const feedbackButton = document.querySelector("#feedback-button");
+const feedbackModal = document.querySelector("#feedback-modal");
+const closeFeedback = document.querySelector("#close-feedback");
+const cancelFeedback = document.querySelector("#cancel-feedback");
+const feedbackForm = document.querySelector("#feedback-form");
+const feedbackName = document.querySelector("#feedback-name");
+const feedbackMessage = document.querySelector("#feedback-message");
+const feedbackStatus = document.querySelector("#feedback-status");
+const sendFeedback = document.querySelector("#send-feedback");
+const feedbackEndpoint = "https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec";
 let previewUrl = null;
 let selectedFile = null;
 let sourceFileHandle = null;
@@ -106,6 +116,15 @@ function itemContains(item, value) {
   return normalizeText(item.text).includes(normalizeText(value));
 }
 
+function textEndX(item, value) {
+  const normalizedItem = normalizeText(item.text);
+  const normalizedValue = normalizeText(value);
+  const start = normalizedItem.indexOf(normalizedValue);
+  if (start < 0) return item.x + item.width;
+  const end = start + normalizedValue.length;
+  return item.x + (item.width * end) / Math.max(item.text.length, 1);
+}
+
 function sameLine(item, other) {
   return Math.abs(item.y - other.y) < 12;
 }
@@ -151,6 +170,59 @@ function findSlashPositions(items, anchor, anchorText) {
   return positions.sort((left, right) => left.x - right.x).slice(0, 2);
 }
 
+function findDateSlots(items, anchor, anchorText) {
+  const normalizedItem = normalizeText(anchor.text);
+  const normalizedAnchor = normalizeText(anchorText);
+  const anchorStart = normalizedItem.indexOf(normalizedAnchor);
+  const rightEdge = anchor.x + (anchor.width * (anchorStart + normalizedAnchor.length))
+    / Math.max(anchor.text.length, 1);
+  const dateItems = items
+    .filter((item) => item.x + item.width >= rightEdge && item.x <= rightEdge + 220 && sameLine(item, anchor))
+    .sort((left, right) => left.x - right.x);
+  const slashes = findSlashPositions(items, anchor, anchorText);
+  if (slashes.length < 2) return [];
+
+  const firstSlash = slashes[0];
+  const secondSlash = slashes[1];
+  const findUnderlineStart = (start, end) => {
+    const underscores = [];
+    dateItems.forEach((item) => {
+      const characterWidth = item.width / Math.max(item.text.length, 1);
+      [...item.text].forEach((character, index) => {
+        const x = item.x + characterWidth * index;
+        if (character === "_" && x >= start && x < end) underscores.push(x);
+      });
+    });
+    return underscores.length ? Math.min(...underscores) : start;
+  };
+  const firstStart = findUnderlineStart(rightEdge, firstSlash.x);
+  const secondStart = findUnderlineStart(firstSlash.x + firstSlash.width, secondSlash.x);
+  const thirdStart = findUnderlineStart(secondSlash.x + secondSlash.width, secondSlash.x + secondSlash.width + 40);
+  const thirdCharacters = [];
+  dateItems.forEach((item) => {
+    const characterWidth = item.width / Math.max(item.text.length, 1);
+    [...item.text].forEach((character, index) => {
+      const x = item.x + characterWidth * index;
+      if ((character === "," || character === "_") && x > secondSlash.x) {
+        thirdCharacters.push({ character, x, width: characterWidth });
+      }
+    });
+  });
+  const comma = thirdCharacters.find((character) => character.character === ",");
+  const lastUnderline = [...thirdCharacters].reverse().find((character) => character.character === "_");
+  const thirdEnd = comma
+    ? comma.x
+    : lastUnderline
+      ? lastUnderline.x + lastUnderline.width
+      : secondSlash.x + secondSlash.width + 30;
+
+  return [
+    { start: firstStart, end: firstSlash.x },
+    { start: secondStart, end: secondSlash.x },
+    { start: thirdStart, end: thirdEnd },
+  ];
+}
+
 async function createPdf(data) {
   const bytes = new Uint8Array(await data.returnFile.arrayBuffer());
   const pdf = await PDFDocument.load(bytes);
@@ -173,13 +245,14 @@ async function createPdf(data) {
 
   const dateAnchor = pageData.items.find((item) => itemContains(item, "devolvid"));
   if (data.date && dateAnchor) {
-    const slashes = findSlashPositions(pageData.items, dateAnchor, "devolvid");
+    const slots = findDateSlots(pageData.items, dateAnchor, "devolvid");
     const [day, month, year] = data.date.split("/");
-    if (slashes.length >= 2) {
-      insert(day, slashes[0].x - font.widthOfTextAtSize(day, 9) - 2, slashes[0].y, 9);
-      const monthWidth = font.widthOfTextAtSize(month, 9);
-      insert(month, (slashes[0].x + slashes[0].width + slashes[1].x - monthWidth) / 2, slashes[0].y, 9);
-      insert(year, slashes[1].x + slashes[1].width + 2, slashes[1].y, 9);
+    if (slots.length === 3) {
+      [day, month, year].forEach((value, index) => {
+        const slot = slots[index];
+        const textWidth = font.widthOfTextAtSize(value, 9);
+        insert(value, slot.start + (slot.end - slot.start - textWidth) / 2, dateAnchor.y, 9);
+      });
     }
   }
 
@@ -199,7 +272,10 @@ async function createPdf(data) {
     itemContains(item, "Nome responsável por recebimento:") || itemContains(item, "por recebimento:"),
   );
   if (data.receiver && receiverLabel) {
-    insert(` ${data.receiver}`, receiverLabel.x + receiverLabel.width + 6, receiverLabel.y, 9);
+    const label = itemContains(receiverLabel, "Nome responsável por recebimento:")
+      ? "Nome responsável por recebimento:"
+      : "por recebimento:";
+    insert(` ${data.receiver}`, textEndX(receiverLabel, label) + 6, receiverLabel.y, 9);
   }
 
   return { bytes: await pdf.save(), pageIndex };
@@ -256,6 +332,82 @@ previewButton.addEventListener("click", showPreview);
 closePreview.addEventListener("click", hidePreview);
 previewModal.addEventListener("click", (event) => {
   if (event.target === previewModal) hidePreview();
+});
+
+function buildFeedbackRecord() {
+  const data = readForm();
+  return {
+    pagina: window.location.href,
+    arquivo: data.returnFile?.name || "Nenhum arquivo selecionado",
+    tipoTermo: data.type,
+    dataDevolucao: data.date,
+    condicao: data.condition,
+    responsavel: data.receiver,
+    navegador: navigator.userAgent,
+    enviadoEm: new Date().toISOString(),
+  };
+}
+
+function formatFeedbackRecord(record) {
+  return [
+    `Página: ${record.pagina}`,
+    `Arquivo: ${record.arquivo}`,
+    `Tipo de termo: ${record.tipoTermo}`,
+    `Data de devolução: ${record.dataDevolucao}`,
+    `Condição: ${record.condicao}`,
+    `Responsável: ${record.responsavel}`,
+    `Navegador: ${record.navegador}`,
+    `Enviado em: ${record.enviadoEm}`,
+  ].join("\n");
+}
+
+function hideFeedback() {
+  feedbackModal.hidden = true;
+  feedbackName.value = "";
+  feedbackMessage.value = "";
+  feedbackStatus.textContent = "";
+}
+
+feedbackButton.addEventListener("click", () => {
+  feedbackStatus.textContent = "";
+  feedbackModal.hidden = false;
+  feedbackName.focus();
+});
+closeFeedback.addEventListener("click", hideFeedback);
+cancelFeedback.addEventListener("click", hideFeedback);
+feedbackModal.addEventListener("click", (event) => {
+  if (event.target === feedbackModal) hideFeedback();
+});
+
+feedbackForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = feedbackName.value.trim();
+  const message = feedbackMessage.value.trim();
+  if (!name || !message) return;
+
+  sendFeedback.disabled = true;
+  feedbackStatus.style.color = "#667085";
+  feedbackStatus.textContent = "Enviando...";
+  try {
+    const record = buildFeedbackRecord();
+    const response = await fetch(feedbackEndpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ registro: formatFeedbackRecord(record), mensagem: `${message}\n\nNome: ${name}` }),
+    });
+    if (response.type !== "opaque" && !response.ok) throw new Error("Resposta inválida do servidor.");
+    feedbackStatus.style.color = "#027a48";
+    feedbackStatus.textContent = "Feedback enviado com sucesso.";
+    feedbackName.value = "";
+    feedbackMessage.value = "";
+    window.setTimeout(hideFeedback, 900);
+  } catch (error) {
+    feedbackStatus.style.color = "#b42318";
+    feedbackStatus.textContent = `Não foi possível enviar: ${error.message}`;
+  } finally {
+    sendFeedback.disabled = false;
+  }
 });
 
 form.addEventListener("submit", async (event) => {

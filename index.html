@@ -123,7 +123,33 @@
       <footer>
         <span>Dados processados localmente no navegador.</span>
         <span>Consulta AD e pasta de rede: integração futura com a TI.</span>
+        <button id="feedback-button" class="feedback-button" type="button">Reportar melhoria</button>
       </footer>
+
+      <div id="feedback-modal" class="preview-modal" hidden>
+        <div class="feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+          <div class="preview-header">
+            <h2 id="feedback-title">Reportar melhoria</h2>
+            <button id="close-feedback" class="close-button" type="button" aria-label="Fechar formulário">×</button>
+          </div>
+          <form id="feedback-form" class="feedback-form">
+            <p class="feedback-notice">Os dados preenchidos serão enviados junto com sua mensagem.</p>
+            <label class="field" for="feedback-name">
+              Nome
+              <input id="feedback-name" type="text" placeholder="Digite seu nome" required />
+            </label>
+            <label class="field" for="feedback-message">
+              Mensagem
+              <textarea id="feedback-message" rows="6" placeholder="Descreva a melhoria ou problema" required></textarea>
+            </label>
+            <p id="feedback-status" class="feedback-status" role="status"></p>
+            <div class="feedback-actions">
+              <button id="cancel-feedback" class="secondary-button" type="button">Cancelar</button>
+              <button id="send-feedback" class="primary-button" type="submit">Enviar mensagem</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </main>
   </body>
 </html>
