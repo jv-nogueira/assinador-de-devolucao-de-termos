@@ -20,7 +20,7 @@
           <p class="eyebrow">PLURISMIDIA - TI</p>
           <h1>Assinador de termos</h1>
           <p class="subtitle">
-            Preencha um termo de empréstimo ou devolução e baixe o PDF pronto
+            Preencha um termo de empréstimo ou devolução e salve o PDF pronto
             para assinatura.
           </p>
         </div>
@@ -42,6 +42,13 @@
               <span>
                 <strong>Devolução</strong>
                 <small>Registrar o recebimento do equipamento</small>
+              </span>
+            </label>
+            <label class="term-type">
+              <input type="radio" name="termType" value="emprestimo" />
+              <span>
+                <strong>Empréstimo</strong>
+                <small>Preencher o termo de responsabilidade</small>
               </span>
             </label>
           </div>
@@ -99,6 +106,22 @@
           </div>
         </section>
 
+        <section id="loan-data" class="section" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">02</p>
+              <h2>Dados do colaborador</h2>
+            </div>
+            <p class="muted">Teste inicial com o campo do modelo PDF original.</p>
+          </div>
+          <div class="form-grid">
+            <label class="field field-wide">
+              Nome completo
+              <input id="loan-full-name" name="loanFullName" type="text" placeholder="Digite o nome completo" />
+            </label>
+          </div>
+        </section>
+
         <div class="actions">
           <p id="feedback" class="feedback" role="status"></p>
           <button id="preview-button" class="secondary-button" type="button">
@@ -116,6 +139,7 @@
           </div>
           <div class="preview-content">
             <canvas id="preview-canvas" aria-label="Prévia do PDF"></canvas>
+            <iframe id="loan-preview" class="loan-preview" title="Prévia do termo de empréstimo" hidden></iframe>
           </div>
         </div>
       </div>

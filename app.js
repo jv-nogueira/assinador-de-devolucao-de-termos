@@ -4,12 +4,17 @@ const form = document.querySelector("#term-form");
 const fileInput = document.querySelector("#pdf-file");
 const fileName = document.querySelector("#file-name");
 const feedback = document.querySelector("#feedback");
+const submitButton = form.querySelector('button[type="submit"]');
 const termTypes = document.querySelectorAll('input[name="termType"]');
 const returnFields = document.querySelector("#return-fields");
 const returnData = document.querySelector("#return-data");
+const loanData = document.querySelector("#loan-data");
+const loanFullName = document.querySelector("#loan-full-name");
 const previewButton = document.querySelector("#preview-button");
 const previewModal = document.querySelector("#preview-modal");
 const previewCanvas = document.querySelector("#preview-canvas");
+const previewTitle = document.querySelector("#preview-title");
+const loanPreview = document.querySelector("#loan-preview");
 const closePreview = document.querySelector("#close-preview");
 const receiverSelect = document.querySelector("#receiver");
 const otherReceiver = document.querySelector("#other-receiver");
@@ -23,6 +28,7 @@ const feedbackMessage = document.querySelector("#feedback-message");
 const feedbackStatus = document.querySelector("#feedback-status");
 const sendFeedback = document.querySelector("#send-feedback");
 const feedbackEndpoint = "https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec";
+const loanEndpoint = "https://script.google.com/macros/s/AKfycbyukaCiKd9Y6YDnuyNMaG5ISFH0v2Hs5a1BTETfgqwi-ta1Ax25nEoBf57SeGh1jLos_A/exec";
 let previewUrl = null;
 let selectedFile = null;
 let sourceFileHandle = null;
@@ -39,8 +45,61 @@ function formatDate(value) {
   return `${day}/${month}/${year.slice(-2)}`;
 }
 
+async function createLoanPdf(data) {
+  const response = await fetch(loanEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    body: JSON.stringify({ nome_completo: data.fullName }),
+  });
+  if (!response.ok) throw new Error("O Apps Script não respondeu corretamente.");
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "O Apps Script não conseguiu gerar o PDF.");
+  const binary = atob(result.pdfBase64);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return { bytes, pageIndex: 0, fileName: result.fileName };
+}
+
+async function prepareLoanPreview(data) {
+  previewCanvas.hidden = true;
+  previewTitle.textContent = "Prévia do termo de empréstimo";
+  const result = await createLoanPdf(data);
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
+  previewModal.hidden = false;
+  loanPreview.hidden = true;
+  previewCanvas.hidden = false;
+  await renderPreview(result.bytes, result.pageIndex);
+  return result;
+}
+
+async function saveLoanPdf(data) {
+  const result = await createLoanPdf(data);
+  const fileName = result.fileName || `termo-responsabilidade-${data.fullName.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+  if (window.showSaveFilePicker && window.location.protocol === "https:") {
+    const fileHandle = await window.showSaveFilePicker({
+      suggestedName: fileName,
+      types: [{ description: "Arquivo PDF", accept: { "application/pdf": [".pdf"] } }],
+    });
+    const writable = await fileHandle.createWritable();
+    await writable.write(new Blob([result.bytes], { type: "application/pdf" }));
+    await writable.close();
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function updateTermType() {
   termTypes.forEach((input) => input.closest(".term-type").classList.toggle("selected", input.checked));
+  const isLoan = selectedTermType() === "emprestimo";
+  returnFields.hidden = isLoan;
+  returnData.hidden = isLoan;
+  loanData.hidden = !isLoan;
+  loanFullName.required = isLoan;
 }
 
 termTypes.forEach((input) => input.addEventListener("change", updateTermType));
@@ -83,6 +142,7 @@ function readForm() {
     condition: document.querySelector("#return-condition").value,
     receiver: receiverSelect.value === "outro" ? otherReceiver.value.trim() : receiverSelect.value,
     date: formatDate(document.querySelector("#return-date").value),
+    fullName: loanFullName.value.trim(),
   };
 }
 
@@ -290,11 +350,27 @@ function validateData(data) {
   return true;
 }
 
-async function showPreview() {
-  feedback.textContent = "";
+async function showPreviewContent() {
   const data = readForm();
+  if (data.type === "emprestimo") {
+    if (!data.fullName) {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "Informe o nome completo para visualizar a prévia.";
+      loanFullName.focus();
+      return;
+    }
+    try {
+      await prepareLoanPreview(data);
+    } catch (error) {
+      previewModal.hidden = true;
+      feedback.style.color = "#b42318";
+      feedback.textContent = `Não foi possível carregar o modelo: ${error.message}`;
+    }
+    return;
+  }
   if (!validateData(data)) return;
   try {
+    previewTitle.textContent = "Prévia do termo de devolução";
     const result = await createPdf(data);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
@@ -306,10 +382,28 @@ async function showPreview() {
   }
 }
 
+async function showPreview() {
+  if (previewButton.disabled) return;
+  const originalText = previewButton.textContent;
+  previewButton.disabled = true;
+  previewButton.textContent = "Carregando prévia...";
+  feedback.style.color = "#667085";
+  feedback.textContent = "Carregando o documento preenchido...";
+  try {
+    await showPreviewContent();
+  } finally {
+    previewButton.disabled = false;
+    previewButton.textContent = originalText;
+    if (feedback.textContent === "Carregando o documento preenchido...") feedback.textContent = "";
+  }
+}
+
 function hidePreview() {
   previewModal.hidden = true;
   previewCanvas.width = 0;
   previewCanvas.height = 0;
+  previewCanvas.hidden = false;
+  loanPreview.hidden = true;
   if (previewUrl) {
     URL.revokeObjectURL(previewUrl);
     previewUrl = null;
@@ -414,6 +508,32 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   feedback.textContent = "";
   const data = readForm();
+  if (data.type === "emprestimo") {
+    if (!data.fullName) {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "Informe o nome completo para gerar o PDF.";
+      loanFullName.focus();
+      return;
+    }
+    const originalText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.textContent = "Gerando PDF...";
+    feedback.style.color = "#667085";
+    feedback.textContent = "Gerando o documento preenchido...";
+    try {
+      await saveLoanPdf(data);
+      feedback.style.color = "#027a48";
+      feedback.textContent = "PDF do termo de empréstimo gerado com sucesso.";
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      feedback.style.color = "#b42318";
+      feedback.textContent = `Não foi possível gerar o PDF: ${error.message}`;
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = originalText;
+    }
+    return;
+  }
   if (!validateData(data)) return;
   try {
     const result = await createPdf(data);
