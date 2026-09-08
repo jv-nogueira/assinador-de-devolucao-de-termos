@@ -112,13 +112,50 @@
               <p class="section-kicker">02</p>
               <h2>Dados do colaborador</h2>
             </div>
-            <p class="muted">Teste inicial com o campo do modelo PDF original.</p>
+            <p class="muted">Preencha o nome e os itens do empréstimo.</p>
           </div>
           <div class="form-grid">
             <label class="field field-wide">
               Nome completo
               <input id="loan-full-name" name="loanFullName" type="text" placeholder="Digite o nome completo" />
             </label>
+          </div>
+
+          <div class="loan-table-section">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">03</p>
+                <h2>Itens do empréstimo</h2>
+              </div>
+              <div class="table-actions">
+                <button type="button" id="add-row" class="secondary-button">Adicionar item</button>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table class="loan-table">
+                <thead>
+                  <tr>
+                    <th>ITEM</th>
+                    <th>QTD</th>
+                    <th>MARCA</th>
+                    <th>MODELO</th>
+                    <th>OBSERVAÇÃO</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="loan-table-body">
+                  <tr class="loan-row">
+                    <td><input type="text" name="itemId" placeholder="ID" /></td>
+                    <td><input type="text" name="itemQntd" placeholder="Qtd" /></td>
+                    <td><input type="text" name="itemMarca" placeholder="Marca" /></td>
+                    <td><input type="text" name="itemModelo" placeholder="Modelo" /></td>
+                    <td><input type="text" name="itemObs" placeholder="Obs" /></td>
+                    <td><button type="button" class="remove-row">Remover</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="muted">Adicione ou remova itens conforme necessário.</p>
           </div>
         </section>
 

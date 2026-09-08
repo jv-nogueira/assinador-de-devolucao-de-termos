@@ -10,6 +10,8 @@ const returnFields = document.querySelector("#return-fields");
 const returnData = document.querySelector("#return-data");
 const loanData = document.querySelector("#loan-data");
 const loanFullName = document.querySelector("#loan-full-name");
+const loanTableBody = document.querySelector("#loan-table-body");
+const addRowButton = document.querySelector("#add-row");
 const previewButton = document.querySelector("#preview-button");
 const previewModal = document.querySelector("#preview-modal");
 const previewCanvas = document.querySelector("#preview-canvas");
@@ -28,7 +30,7 @@ const feedbackMessage = document.querySelector("#feedback-message");
 const feedbackStatus = document.querySelector("#feedback-status");
 const sendFeedback = document.querySelector("#send-feedback");
 const feedbackEndpoint = "https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec";
-const loanEndpoint = "https://script.google.com/macros/s/AKfycbyukaCiKd9Y6YDnuyNMaG5ISFH0v2Hs5a1BTETfgqwi-ta1Ax25nEoBf57SeGh1jLos_A/exec";
+const loanEndpoint = "https://script.google.com/macros/s/AKfycbw-A7wLAdkVxfthIhe2FHa0shvj_34PBV2dUDvP_scy10HNzzLmGasKb-JjTZXTTEaSqg/exec";
 let previewUrl = null;
 let selectedFile = null;
 let sourceFileHandle = null;
@@ -45,11 +47,52 @@ function formatDate(value) {
   return `${day}/${month}/${year.slice(-2)}`;
 }
 
+function createLoanRow() {
+  const row = document.createElement("tr");
+  row.className = "loan-row";
+  row.innerHTML = `
+    <td><input type="text" name="itemId" placeholder="ID" /></td>
+    <td><input type="text" name="itemQntd" placeholder="Qtd" /></td>
+    <td><input type="text" name="itemMarca" placeholder="Marca" /></td>
+    <td><input type="text" name="itemModelo" placeholder="Modelo" /></td>
+    <td><input type="text" name="itemObs" placeholder="Obs" /></td>
+    <td><button type="button" class="remove-row">Remover</button></td>
+  `;
+  row.querySelector(".remove-row").addEventListener("click", () => {
+    const rows = loanTableBody.querySelectorAll(".loan-row");
+    if (rows.length > 1) {
+      row.remove();
+    } else {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "É necessário pelo menos um item.";
+    }
+  });
+  return row;
+}
+
+function addLoanRow() {
+  loanTableBody.appendChild(createLoanRow());
+}
+
+function readLoanRows() {
+  const rows = Array.from(loanTableBody.querySelectorAll(".loan-row"));
+  return rows.map((row) => {
+    const inputs = row.querySelectorAll("input");
+    return {
+      id: inputs[0].value.trim(),
+      qntd: inputs[1].value.trim(),
+      marca: inputs[2].value.trim(),
+      modelo: inputs[3].value.trim(),
+      observacao: inputs[4].value.trim(),
+    };
+  });
+}
+
 async function createLoanPdf(data) {
   const response = await fetch(loanEndpoint, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=UTF-8" },
-    body: JSON.stringify({ nome_completo: data.fullName }),
+    body: JSON.stringify({ nome_completo: data.fullName, linhas: data.linhas }),
   });
   if (!response.ok) throw new Error("O Apps Script não respondeu corretamente.");
   const result = await response.json();
@@ -60,15 +103,14 @@ async function createLoanPdf(data) {
 }
 
 async function prepareLoanPreview(data) {
-  previewCanvas.hidden = true;
+  previewCanvas.hidden = false;
   previewTitle.textContent = "Prévia do termo de empréstimo";
   const result = await createLoanPdf(data);
   if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
   previewModal.hidden = false;
   loanPreview.hidden = true;
-  previewCanvas.hidden = false;
-  await renderPreview(result.bytes, result.pageIndex);
+  loanPreview.src = "";
+  await renderFullPreview(result.bytes);
   return result;
 }
 
@@ -103,6 +145,7 @@ function updateTermType() {
 }
 
 termTypes.forEach((input) => input.addEventListener("change", updateTermType));
+addRowButton.addEventListener("click", addLoanRow);
 fileInput.addEventListener("change", () => {
   selectedFile = fileInput.files[0] || null;
   sourceFileHandle = null;
@@ -143,6 +186,7 @@ function readForm() {
     receiver: receiverSelect.value === "outro" ? otherReceiver.value.trim() : receiverSelect.value,
     date: formatDate(document.querySelector("#return-date").value),
     fullName: loanFullName.value.trim(),
+    linhas: readLoanRows(),
   };
 }
 
@@ -404,6 +448,7 @@ function hidePreview() {
   previewCanvas.height = 0;
   previewCanvas.hidden = false;
   loanPreview.hidden = true;
+  loanPreview.removeAttribute("src");
   if (previewUrl) {
     URL.revokeObjectURL(previewUrl);
     previewUrl = null;
@@ -420,6 +465,55 @@ async function renderPreview(bytes, pageIndex) {
   previewCanvas.width = viewport.width;
   previewCanvas.height = viewport.height;
   await page.render({ canvasContext: previewCanvas.getContext("2d"), viewport }).promise;
+}
+
+async function renderFullPreview(bytes) {
+  const documentProxy = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+  const maxWidth = Math.max(previewCanvas.parentElement.clientWidth - 40, 320);
+  const pageCount = documentProxy.numPages;
+  const pages = [];
+  const viewports = [];
+  let totalHeight = 0;
+  let scale = 1.5;
+
+  for (let i = 1; i <= pageCount; i += 1) {
+    const page = await documentProxy.getPage(i);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const pageScale = Math.min(1.5, maxWidth / baseViewport.width);
+    const viewport = page.getViewport({ scale: pageScale });
+    pages.push(page);
+    viewports.push(viewport);
+    totalHeight += viewport.height;
+    if (i === 1) scale = pageScale;
+  }
+
+  previewCanvas.width = Math.max(...viewports.map((viewport) => viewport.width));
+  previewCanvas.height = totalHeight;
+  const context = previewCanvas.getContext("2d");
+  context.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+  let offsetY = 0;
+  for (let i = 0; i < pages.length; i += 1) {
+    const page = pages[i];
+    const viewport = viewports[i];
+    if (!viewport.width || !viewport.height) continue;
+    const width = viewport.width;
+    const height = viewport.height;
+    const x = (previewCanvas.width - width) / 2;
+
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempContext = tempCanvas.getContext("2d");
+
+    try {
+      await page.render({ canvasContext: tempContext, viewport }).promise;
+      context.drawImage(tempCanvas, x, offsetY);
+    } catch (error) {
+      console.error(`Falha ao renderizar a página ${i + 1}`, error);
+    }
+    offsetY += height;
+  }
 }
 
 previewButton.addEventListener("click", showPreview);
