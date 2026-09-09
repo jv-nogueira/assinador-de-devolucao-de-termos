@@ -18,7 +18,25 @@ function doPost(event) {
 
     const document = DocumentApp.openById(copyId);
     const body = document.getBody();
-    body.replaceText("\\{\\{nome_completo\\}\\}", fullName);
+    replacePlaceholder(body, "nome_completo", fullName, false);
+    replacePlaceholder(body, "cpf", payload.cpf, false);
+    replacePlaceholder(body, "setor_ou_operacao", payload.setor_ou_operacao, false);
+    replacePlaceholder(body, "cargo", payload.cargo, false);
+    replacePlaceholder(body, "email_profissional", payload.email_profissional, false);
+    replacePlaceholder(body, "email_pessoal", payload.email_pessoal, false);
+    replaceManagerPlaceholder(body, payload.gestor_que_aprovou);
+    replacePlaceholder(body, "emprestimo_dia", payload.emprestimo_dia, true);
+    replacePlaceholder(body, "emprestimo_mes", payload.emprestimo_mes, true);
+    replacePlaceholder(body, "emprestimo_ano", payload.emprestimo_ano, true);
+    replaceLiteralPlaceholder(body, "((emprestimo_ano}}", payload.emprestimo_ano, true);
+    replacePlaceholder(body, "check_perfeito", "", false);
+    replacePlaceholder(body, "check_defeito", "", false);
+    replacePlaceholder(body, "check_faltando", "", false);
+    replacePlaceholder(body, "check_outros", "", false);
+    replacePlaceholder(body, "devolucao_dia", "", false);
+    replacePlaceholder(body, "devolucao_mes", "", false);
+    replacePlaceholder(body, "devolucao_ano", "", false);
+    replacePlaceholder(body, "tecnico_recebedor", "", false);
 
     if (linhas.length > 0) {
       fillTable(body, linhas);
@@ -77,6 +95,9 @@ function fillTable(body, linhas) {
   }
 
   if (!targetTable) return;
+  if (targetTable.getNumRows() < 2) return;
+
+  const templateRow = targetTable.getRow(1).copy();
 
   while (targetTable.getNumRows() > 1) {
     targetTable.removeRow(targetTable.getNumRows() - 1);
@@ -84,17 +105,63 @@ function fillTable(body, linhas) {
 
   if (linhas.length === 0) return;
 
-  for (const linha of linhas) {
-    const newRow = targetTable.appendTableRow();
+  linhas.forEach((linha) => {
+    const newRow = targetTable.appendTableRow(templateRow.copy());
     const values = [linha.id || "", linha.qntd || "", linha.marca || "", linha.modelo || "", linha.observacao || ""];
     for (let c = 0; c < values.length; c += 1) {
-      newRow.appendTableCell(values[c]);
+      newRow.getCell(c).setText(values[c]);
     }
-  }
+  });
 }
 
 function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function replacePlaceholder(body, name, value, underline) {
+  const replacement = String(value || "");
+  let match = body.findText(`\\{\\{${name}\\}\\}`);
+
+  replaceMatch(body, match, replacement, underline, () => body.findText(`\\{\\{${name}\\}\\}`));
+}
+
+function replaceLiteralPlaceholder(body, placeholder, value, underline) {
+  const replacement = String(value || "");
+  const pattern = placeholder === "((emprestimo_ano}}"
+    ? "\\(\\(emprestimo_ano\\}\\}"
+    : placeholder;
+  const match = body.findText(pattern);
+  replaceMatch(body, match, replacement, underline, () => body.findText(pattern));
+}
+
+function replaceManagerPlaceholder(body, value) {
+  const manager = String(value || "");
+  const replacement = manager + "_".repeat(Math.max(34 - manager.length, 0));
+  let match = body.findText("\\{\\{gestor_que_aprovou\\}\\}");
+
+  while (match) {
+    const text = match.getElement().asText();
+    const start = match.getStartOffset();
+    const end = match.getEndOffsetInclusive();
+    text.deleteText(start, end);
+    text.insertText(start, replacement);
+    text.setUnderline(start, start + replacement.length - 1, true);
+    match = body.findText("\\{\\{gestor_que_aprovou\\}\\}");
+  }
+}
+
+function replaceMatch(body, match, replacement, underline, findNext) {
+  while (match) {
+    const text = match.getElement().asText();
+    const start = match.getStartOffset();
+    const end = match.getEndOffsetInclusive();
+    text.deleteText(start, end);
+    if (replacement) {
+      text.insertText(start, replacement);
+      if (underline) text.setUnderline(start, start + replacement.length - 1, true);
+    }
+    match = findNext();
+  }
 }

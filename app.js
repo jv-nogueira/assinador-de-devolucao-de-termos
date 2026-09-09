@@ -10,6 +10,17 @@ const returnFields = document.querySelector("#return-fields");
 const returnData = document.querySelector("#return-data");
 const loanData = document.querySelector("#loan-data");
 const loanFullName = document.querySelector("#loan-full-name");
+const loanCpf = document.querySelector("#loan-cpf");
+const loanSector = document.querySelector("#loan-sector");
+const loanRole = document.querySelector("#loan-role");
+const loanWorkEmail = document.querySelector("#loan-work-email");
+const loanPersonalEmail = document.querySelector("#loan-personal-email");
+const loanManager = document.querySelector("#loan-manager");
+const loanAcceptanceDate = document.querySelector("#loan-acceptance-date");
+const loanRequiredFields = [
+  loanFullName, loanCpf, loanSector, loanRole, loanWorkEmail,
+  loanPersonalEmail, loanManager, loanAcceptanceDate,
+];
 const loanTableBody = document.querySelector("#loan-table-body");
 const addRowButton = document.querySelector("#add-row");
 const previewButton = document.querySelector("#preview-button");
@@ -30,12 +41,20 @@ const feedbackMessage = document.querySelector("#feedback-message");
 const feedbackStatus = document.querySelector("#feedback-status");
 const sendFeedback = document.querySelector("#send-feedback");
 const feedbackEndpoint = "https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec";
-const loanEndpoint = "https://script.google.com/macros/s/AKfycbw-A7wLAdkVxfthIhe2FHa0shvj_34PBV2dUDvP_scy10HNzzLmGasKb-JjTZXTTEaSqg/exec";
+const loanEndpoint = "https://script.google.com/macros/s/AKfycbxHVAwxHxS9l9Pw1zBnD8ZD7OtMo_sK_zZzHYwvD9xH2Exv5AmDxW4zvCAibu3aXpyR_w/exec";
 let previewUrl = null;
 let selectedFile = null;
 let sourceFileHandle = null;
 
-document.querySelector("#return-date").value = new Date().toISOString().slice(0, 10);
+function todayAsInputDate() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
+document.querySelector("#return-date").value = todayAsInputDate();
+loanAcceptanceDate.value = todayAsInputDate();
 
 function selectedTermType() {
   return document.querySelector('input[name="termType"]:checked').value;
@@ -51,7 +70,7 @@ function createLoanRow() {
   const row = document.createElement("tr");
   row.className = "loan-row";
   row.innerHTML = `
-    <td><input type="text" name="itemId" placeholder="ID" /></td>
+    <td><input type="text" name="itemId" value="" readonly /></td>
     <td><input type="text" name="itemQntd" placeholder="Qtd" /></td>
     <td><input type="text" name="itemMarca" placeholder="Marca" /></td>
     <td><input type="text" name="itemModelo" placeholder="Modelo" /></td>
@@ -62,6 +81,7 @@ function createLoanRow() {
     const rows = loanTableBody.querySelectorAll(".loan-row");
     if (rows.length > 1) {
       row.remove();
+      renumberLoanItems();
     } else {
       feedback.style.color = "#b42318";
       feedback.textContent = "É necessário pelo menos um item.";
@@ -72,6 +92,13 @@ function createLoanRow() {
 
 function addLoanRow() {
   loanTableBody.appendChild(createLoanRow());
+  renumberLoanItems();
+}
+
+function renumberLoanItems() {
+  loanTableBody.querySelectorAll(".loan-row").forEach((row, index) => {
+    row.querySelector('input[name="itemId"]').value = String(index + 1);
+  });
 }
 
 function readLoanRows() {
@@ -92,7 +119,19 @@ async function createLoanPdf(data) {
   const response = await fetch(loanEndpoint, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=UTF-8" },
-    body: JSON.stringify({ nome_completo: data.fullName, linhas: data.linhas }),
+    body: JSON.stringify({
+      nome_completo: data.fullName,
+      cpf: data.cpf,
+      setor_ou_operacao: data.sector,
+      cargo: data.role,
+      email_profissional: data.workEmail,
+      email_pessoal: data.personalEmail,
+      gestor_que_aprovou: data.manager,
+      emprestimo_dia: data.acceptanceDate.day,
+      emprestimo_mes: data.acceptanceDate.month,
+      emprestimo_ano: data.acceptanceDate.year,
+      linhas: data.linhas,
+    }),
   });
   if (!response.ok) throw new Error("O Apps Script não respondeu corretamente.");
   const result = await response.json();
@@ -141,7 +180,7 @@ function updateTermType() {
   returnFields.hidden = isLoan;
   returnData.hidden = isLoan;
   loanData.hidden = !isLoan;
-  loanFullName.required = isLoan;
+  loanRequiredFields.forEach((field) => { field.required = isLoan; });
 }
 
 termTypes.forEach((input) => input.addEventListener("change", updateTermType));
@@ -186,8 +225,25 @@ function readForm() {
     receiver: receiverSelect.value === "outro" ? otherReceiver.value.trim() : receiverSelect.value,
     date: formatDate(document.querySelector("#return-date").value),
     fullName: loanFullName.value.trim(),
+    cpf: loanCpf.value.trim(),
+    sector: loanSector.value.trim(),
+    role: loanRole.value.trim(),
+    workEmail: loanWorkEmail.value.trim(),
+    personalEmail: loanPersonalEmail.value.trim(),
+    manager: loanManager.value.trim(),
+    acceptanceDate: parseLoanDate(loanAcceptanceDate.value),
     linhas: readLoanRows(),
   };
+}
+
+function parseLoanDate(value) {
+  if (!value) return { day: "", month: "", year: "" };
+  const [year, month, day] = value.split("-");
+  const monthNames = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  ];
+  return { day, month: monthNames[Number(month) - 1] || "", year };
 }
 
 function normalizeText(value) {

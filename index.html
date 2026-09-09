@@ -119,6 +119,26 @@
               Nome completo
               <input id="loan-full-name" name="loanFullName" type="text" placeholder="Digite o nome completo" />
             </label>
+            <label class="field">
+              CPF
+              <input id="loan-cpf" name="loanCpf" type="text" placeholder="Digite o CPF" />
+            </label>
+            <label class="field">
+              Setor ou operação
+              <input id="loan-sector" name="loanSector" type="text" placeholder="Digite o setor ou operação" />
+            </label>
+            <label class="field">
+              Cargo
+              <input id="loan-role" name="loanRole" type="text" placeholder="Digite o cargo" />
+            </label>
+            <label class="field">
+              E-mail profissional
+              <input id="loan-work-email" name="loanWorkEmail" type="email" placeholder="Digite o e-mail profissional" />
+            </label>
+            <label class="field">
+              E-mail pessoal
+              <input id="loan-personal-email" name="loanPersonalEmail" type="email" placeholder="Digite o e-mail pessoal" />
+            </label>
           </div>
 
           <div class="loan-table-section">
@@ -145,7 +165,7 @@
                 </thead>
                 <tbody id="loan-table-body">
                   <tr class="loan-row">
-                    <td><input type="text" name="itemId" placeholder="ID" /></td>
+                    <td><input type="text" name="itemId" value="1" readonly /></td>
                     <td><input type="text" name="itemQntd" placeholder="Qtd" /></td>
                     <td><input type="text" name="itemMarca" placeholder="Marca" /></td>
                     <td><input type="text" name="itemModelo" placeholder="Modelo" /></td>
@@ -156,6 +176,17 @@
               </table>
             </div>
             <p class="muted">Adicione ou remova itens conforme necessário.</p>
+          </div>
+
+          <div class="form-grid loan-approval-fields">
+            <label class="field field-wide">
+              Nome completo do gestor que aprovou
+              <input id="loan-manager" name="loanManager" type="text" placeholder="Digite o nome do gestor" />
+            </label>
+            <label class="field">
+              Data de aceite
+              <input id="loan-acceptance-date" name="loanAcceptanceDate" type="date" />
+            </label>
           </div>
         </section>
 
