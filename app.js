@@ -63,7 +63,7 @@ function selectedTermType() {
 function formatDate(value) {
   if (!value) return "";
   const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year.slice(-2)}`;
+  return `${day}/${month}/${year}`;
 }
 
 function createLoanRow() {
@@ -383,6 +383,43 @@ function findDateSlots(items, anchor, anchorText) {
   ];
 }
 
+function findDateLine(items, anchor, anchorText) {
+  const normalizedItem = normalizeText(anchor.text);
+  const normalizedAnchor = normalizeText(anchorText);
+  const anchorStart = normalizedItem.indexOf(normalizedAnchor);
+  const rightEdge = anchor.x + (anchor.width * (anchorStart + normalizedAnchor.length))
+    / Math.max(anchor.text.length, 1);
+  const lineItems = items.filter((item) =>
+    item.x + item.width >= rightEdge && item.x <= rightEdge + 220 && sameLine(item, anchor));
+  const underlines = [];
+
+  lineItems.forEach((item) => {
+    const characterWidth = item.width / Math.max(item.text.length, 1);
+    [...item.text].forEach((character, index) => {
+      if (character === "_") {
+        underlines.push({
+          x: item.x + characterWidth * index,
+          width: characterWidth,
+        });
+      }
+    });
+  });
+
+  if (underlines.length) {
+    return {
+      start: Math.min(...underlines.map(({ x }) => x)),
+      end: Math.max(...underlines.map(({ x, width }) => x + width)),
+      y: anchor.y,
+    };
+  }
+
+  return {
+    start: rightEdge + 4,
+    end: rightEdge + 100,
+    y: anchor.y,
+  };
+}
+
 async function createPdf(data) {
   const bytes = new Uint8Array(await data.returnFile.arrayBuffer());
   const pdf = await PDFDocument.load(bytes);
@@ -413,6 +450,10 @@ async function createPdf(data) {
         const textWidth = font.widthOfTextAtSize(value, 9);
         insert(value, slot.start + (slot.end - slot.start - textWidth) / 2, dateAnchor.y, 9);
       });
+    } else {
+      const dateLine = findDateLine(pageData.items, dateAnchor, "devolvid");
+      const textWidth = font.widthOfTextAtSize(data.date, 9);
+      insert(data.date, dateLine.start + (dateLine.end - dateLine.start - textWidth) / 2, dateLine.y, 9);
     }
   }
 
