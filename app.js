@@ -10,16 +10,15 @@ const returnFields = document.querySelector("#return-fields");
 const returnData = document.querySelector("#return-data");
 const loanData = document.querySelector("#loan-data");
 const loanFullName = document.querySelector("#loan-full-name");
-const loanCpf = document.querySelector("#loan-cpf");
+const loanMatricula = document.querySelector("#loan-matricula");
 const loanSector = document.querySelector("#loan-sector");
 const loanRole = document.querySelector("#loan-role");
-const loanWorkEmail = document.querySelector("#loan-work-email");
+const loanChamado = document.querySelector("#loan-chamado");
 const loanPersonalEmail = document.querySelector("#loan-personal-email");
-const loanManager = document.querySelector("#loan-manager");
 const loanAcceptanceDate = document.querySelector("#loan-acceptance-date");
 const loanRequiredFields = [
-  loanFullName, loanCpf, loanSector, loanRole, loanWorkEmail,
-  loanPersonalEmail, loanManager, loanAcceptanceDate,
+  loanFullName, loanMatricula, loanSector, loanRole, loanChamado,
+  loanPersonalEmail, loanAcceptanceDate,
 ];
 const loanTableBody = document.querySelector("#loan-table-body");
 const addRowButton = document.querySelector("#add-row");
@@ -41,7 +40,7 @@ const feedbackMessage = document.querySelector("#feedback-message");
 const feedbackStatus = document.querySelector("#feedback-status");
 const sendFeedback = document.querySelector("#send-feedback");
 const feedbackEndpoint = "https://script.google.com/macros/s/AKfycbwo0DnCb5T3Gtzr7TEurmK8z06BphS78E2l-x8purKh5LEw3VPvD7c5fW-qrIVuHWHiOA/exec";
-const loanEndpoint = "https://script.google.com/macros/s/AKfycbxHVAwxHxS9l9Pw1zBnD8ZD7OtMo_sK_zZzHYwvD9xH2Exv5AmDxW4zvCAibu3aXpyR_w/exec";
+const loanEndpoint = "https://script.google.com/macros/s/AKfycbwGOI251_GZ0JcRtzP3XWohc3T8Ttoc4VeLLpJDE9VkbzxPiCohSeuswoPNj9c7x2IlHA/exec";
 let previewUrl = null;
 let selectedFile = null;
 let sourceFileHandle = null;
@@ -55,6 +54,54 @@ function todayAsInputDate() {
 
 document.querySelector("#return-date").value = todayAsInputDate();
 loanAcceptanceDate.value = todayAsInputDate();
+
+function keepOnlyDigits(event) {
+  const input = event.currentTarget || event.target;
+  const digits = input.value.replace(/\D/g, "");
+  if (input.value !== digits) {
+    input.value = digits;
+  }
+}
+
+function preventNonNumericKey(event) {
+  if (
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    [
+      "Backspace", "Delete", "Tab", "Escape", "Enter",
+      "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+      "Home", "End"
+    ].includes(event.key)
+  ) {
+    return;
+  }
+  if (!/^[0-9]$/.test(event.key)) {
+    event.preventDefault();
+  }
+}
+
+[loanMatricula, loanChamado].forEach((input) => {
+  if (!input) return;
+  input.addEventListener("keydown", preventNonNumericKey);
+  input.addEventListener("input", keepOnlyDigits);
+  input.addEventListener("paste", () => setTimeout(() => keepOnlyDigits({ currentTarget: input }), 0));
+  input.addEventListener("change", keepOnlyDigits);
+});
+
+function sanitizeFileNamePart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[\\/:*?"<>|]/g, "");
+}
+
+function buildLoanFileName(data) {
+  const matricula = String(data.matricula || "").replace(/\D/g, "") || "matricula";
+  const setor = sanitizeFileNamePart(data.sector) || "setor";
+  const chamado = String(data.chamado || "").replace(/\D/g, "") || "chamado";
+  return `${matricula}_${setor}_${chamado}.pdf`.replace(/\s+/g, "");
+}
 
 function selectedTermType() {
   return document.querySelector('input[name="termType"]:checked').value;
@@ -121,12 +168,11 @@ async function createLoanPdf(data) {
     headers: { "Content-Type": "text/plain;charset=UTF-8" },
     body: JSON.stringify({
       nome_completo: data.fullName,
-      cpf: data.cpf,
+      matricula: data.matricula,
       setor_ou_operacao: data.sector,
       cargo: data.role,
-      email_profissional: data.workEmail,
       email_pessoal: data.personalEmail,
-      gestor_que_aprovou: data.manager,
+      chamado: data.chamado,
       emprestimo_dia: data.acceptanceDate.day,
       emprestimo_mes: data.acceptanceDate.month,
       emprestimo_ano: data.acceptanceDate.year,
@@ -154,18 +200,38 @@ async function prepareLoanPreview(data) {
 }
 
 async function saveLoanPdf(data) {
+  const fileName = buildLoanFileName(data);
+  let fileHandle = null;
+
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: "Arquivo PDF", accept: { "application/pdf": [".pdf"] } }],
+      });
+    } catch (pickerError) {
+      if (pickerError.name === "AbortError") {
+        throw pickerError;
+      }
+      console.warn("showSaveFilePicker não pôde ser aberto:", pickerError);
+    }
+  }
+
+  submitButton.disabled = true;
+  submitButton.textContent = "Gerando PDF...";
+  feedback.style.color = "#667085";
+  feedback.textContent = "Gerando o documento preenchido...";
+
   const result = await createLoanPdf(data);
-  const fileName = result.fileName || `termo-responsabilidade-${data.fullName.replace(/\s+/g, "-").toLowerCase()}.pdf`;
-  if (window.showSaveFilePicker && window.location.protocol === "https:") {
-    const fileHandle = await window.showSaveFilePicker({
-      suggestedName: fileName,
-      types: [{ description: "Arquivo PDF", accept: { "application/pdf": [".pdf"] } }],
-    });
+
+  if (fileHandle) {
+    feedback.textContent = "Gravando arquivo no local selecionado...";
     const writable = await fileHandle.createWritable();
     await writable.write(new Blob([result.bytes], { type: "application/pdf" }));
     await writable.close();
     return;
   }
+
   const url = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
   const link = document.createElement("a");
   link.href = url;
@@ -225,12 +291,11 @@ function readForm() {
     receiver: receiverSelect.value === "outro" ? otherReceiver.value.trim() : receiverSelect.value,
     date: formatDate(document.querySelector("#return-date").value),
     fullName: loanFullName.value.trim(),
-    cpf: loanCpf.value.trim(),
+    matricula: loanMatricula.value.trim(),
     sector: loanSector.value.trim(),
     role: loanRole.value.trim(),
-    workEmail: loanWorkEmail.value.trim(),
+    chamado: loanChamado.value.trim(),
     personalEmail: loanPersonalEmail.value.trim(),
-    manager: loanManager.value.trim(),
     acceptanceDate: parseLoanDate(loanAcceptanceDate.value),
     linhas: readLoanRows(),
   };
@@ -420,12 +485,147 @@ function findDateLine(items, anchor, anchorText) {
   };
 }
 
-async function createPdf(data) {
-  const bytes = new Uint8Array(await data.returnFile.arrayBuffer());
-  const pdf = await PDFDocument.load(bytes);
-  const pages = await readPdfPages(bytes);
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+function pageText(page) {
+  return normalizeText(page.items.map((item) => item.text).join(" ")).replace(/\s+/g, "");
+}
+
+function pageContains(page, value) {
+  return pageText(page).includes(normalizeText(value).replace(/\s+/g, ""));
+}
+
+function findPage(pages, value, startIndex = 0) {
+  const relativeIndex = pages.slice(startIndex).findIndex((page) => pageContains(page, value));
+  return relativeIndex < 0 ? -1 : relativeIndex + startIndex;
+}
+
+function findLineAnchor(items, label, fallbackTerms = []) {
+  const normalizedLabel = normalizeText(label);
+  const exact = items.find((item) => normalizeText(item.text).includes(normalizedLabel));
+  if (exact) return exact;
+
+  const lines = [];
+  items.forEach((item) => {
+    const line = lines.find((candidate) => sameLine(candidate[0], item));
+    if (line) line.push(item);
+    else lines.push([item]);
+  });
+
+  for (const line of lines) {
+    const ordered = line.sort((left, right) => left.x - right.x);
+    const text = ordered.map((item) => item.text).join(" ");
+    const normalizedText = normalizeText(text);
+    const normalizedLabelWithoutSpaces = normalizedLabel.replace(/\s+/g, "");
+    if (
+      normalizedText.includes(normalizedLabel) ||
+      normalizeText(ordered.map((item) => item.text).join("")).includes(normalizedLabelWithoutSpaces)
+    ) {
+      const first = ordered[0];
+      const last = ordered[ordered.length - 1];
+      return {
+        text,
+        x: first.x,
+        y: first.y,
+        width: last.x + last.width - first.x,
+      };
+    }
+  }
+
+  const terms = fallbackTerms.length
+    ? fallbackTerms
+    : label.split(/\s+/).map(normalizeText).filter(Boolean);
+  const lastTerm = terms[terms.length - 1];
+  return items.find((item) => normalizeText(item.text).includes(lastTerm)) || null;
+}
+
+function anchorEndX(anchor, label) {
+  const normalizedLabel = normalizeText(label);
+  const normalizedText = normalizeText(anchor.text);
+  const start = normalizedText.indexOf(normalizedLabel);
+  if (start >= 0) return textEndX(anchor, label);
+
+  const terms = label.split(/\s+/).map(normalizeText).filter(Boolean);
+  const lastTerm = terms[terms.length - 1];
+  return textEndX(anchor, lastTerm);
+}
+
+function insertAfterLabel(page, items, label, value, insert, fallbackTerms = []) {
+  const anchor = findLineAnchor(items, label, fallbackTerms);
+  if (!anchor || !value) return false;
+  insert(` ${value}`, anchorEndX(anchor, label) + 6, anchor.y, 9);
+  return true;
+}
+
+function findConditionOption(items, condition) {
+  const normalizedCondition = normalizeText(condition);
+  const exact = items.find((item) => itemContains(item, condition));
+  if (exact) return exact;
+
+  const normalizedConditionText = normalizedCondition.replace(/\s+/g, "");
+  const keyword = normalizedConditionText.includes("perfeito")
+    ? "perfeito"
+    : normalizedConditionText.includes("apresentando")
+      ? "apresentando"
+      : normalizedConditionText.includes("faltando")
+        ? "faltando"
+        : "";
+  if (!keyword) return null;
+
+  const candidates = items.filter((item) => itemContains(item, keyword));
+  return candidates.find((item) => {
+    const punctuation = findParenthesisPositions(items, item);
+    return punctuation.some((entry) => entry.character === "(") &&
+      punctuation.some((entry) => entry.character === ")");
+  }) || candidates[0] || null;
+}
+
+async function fillComodatoReturnPdf(pdf, pages, data, font, bold) {
+  const protocolIndex = pages.findIndex((page) => pageContains(page, "PROTOCOLO DE ENTREGA"));
+  if (protocolIndex < 0) {
+    throw new Error("Não foi encontrada a seção PROTOCOLO DE ENTREGA neste termo de COMODATO.");
+  }
+
+  const protocolPage = pdf.getPages()[protocolIndex];
+  const protocolData = pages[protocolIndex];
+  const insert = (text, x, y, size = 9, useBold = false) => {
+    protocolPage.drawText(text, { x, y, size, font: useBold ? bold : font, color: rgb(0, 0, 0) });
+  };
+
+  const option = findConditionOption(protocolData.items, data.condition);
+  if (option) {
+    const punctuation = findParenthesisPositions(protocolData.items, option);
+    const open = punctuation.filter((item) => item.character === "(").pop();
+    const close = punctuation.find((item) => item.character === ")" && (!open || item.x > open.x));
+    const center = open && close
+      ? (open.x + close.x + close.width) / 2
+      : option.x - 8.5;
+    const xWidth = bold.widthOfTextAtSize("X", 11.5);
+    insert("X", center - xWidth / 2, option.y, 11.5, true);
+  }
+
+  const dataPageIndex = findPage(pages, "Data da devolução:", protocolIndex + 1);
+  if (dataPageIndex >= 0) {
+    const dataPage = pdf.getPages()[dataPageIndex];
+    const dataPageItems = pages[dataPageIndex].items;
+    const dataInsert = (text, x, y, size = 9, useBold = false) => {
+      dataPage.drawText(text, { x, y, size, font: useBold ? bold : font, color: rgb(0, 0, 0) });
+    };
+    insertAfterLabel(dataPage, dataPageItems, "Data da devolução:", data.date, dataInsert, ["devolução:"]);
+  }
+
+  const receiverPageIndex = findPage(pages, "Responsável pelo recebimento:", protocolIndex + 1);
+  if (receiverPageIndex >= 0) {
+    const receiverPage = pdf.getPages()[receiverPageIndex];
+    const receiverPageItems = pages[receiverPageIndex].items;
+    const receiverInsert = (text, x, y, size = 9, useBold = false) => {
+      receiverPage.drawText(text, { x, y, size, font: useBold ? bold : font, color: rgb(0, 0, 0) });
+    };
+    insertAfterLabel(receiverPage, receiverPageItems, "Responsável pelo recebimento:", data.receiver, receiverInsert, ["recebimento:"]);
+  }
+
+  return { bytes: await pdf.save(), pageIndex: protocolIndex };
+}
+
+async function fillLegacyReturnPdf(pdf, pages, data, font, bold) {
   const pageIndex = pages.findIndex(({ items }) => items.some(
     (item) => itemContains(item, "Em perfeito estado") || itemContains(item, "por recebimento:"),
   ));
@@ -482,6 +682,20 @@ async function createPdf(data) {
   return { bytes: await pdf.save(), pageIndex };
 }
 
+async function createPdf(data) {
+  const bytes = new Uint8Array(await data.returnFile.arrayBuffer());
+  const pdf = await PDFDocument.load(bytes);
+  const pages = await readPdfPages(bytes);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const isComodato = pages.some((page) => pageContains(page, "COMODATO"));
+
+  if (isComodato) {
+    return fillComodatoReturnPdf(pdf, pages, data, font, bold);
+  }
+  return fillLegacyReturnPdf(pdf, pages, data, font, bold);
+}
+
 function validateData(data) {
   if (!data.returnFile) {
     feedback.style.color = "#b42318";
@@ -515,8 +729,14 @@ async function showPreviewContent() {
     const result = await createPdf(data);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(new Blob([result.bytes], { type: "application/pdf" }));
+    
+    // Prepara os elementos de visualização
     previewModal.hidden = false;
-    await renderPreview(result.bytes, result.pageIndex);
+    loanPreview.hidden = true; 
+    previewCanvas.hidden = false;
+
+    // Renderiza TODAS as páginas no canvas
+    await renderFullPreview(result.bytes);
   } catch (error) {
     feedback.style.color = "#b42318";
     feedback.textContent = `Não foi possível gerar a prévia: ${error.message}`;
@@ -706,17 +926,34 @@ form.addEventListener("submit", async (event) => {
       loanFullName.focus();
       return;
     }
+    if (!data.matricula || !/^\d+$/.test(data.matricula)) {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "Informe a matrícula (apenas números) para gerar o PDF.";
+      loanMatricula.focus();
+      return;
+    }
+    if (!data.sector) {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "Informe o setor ou operação para gerar o PDF.";
+      loanSector.focus();
+      return;
+    }
+    if (!data.chamado || !/^\d+$/.test(data.chamado)) {
+      feedback.style.color = "#b42318";
+      feedback.textContent = "Informe o chamado (apenas números) para gerar o PDF.";
+      loanChamado.focus();
+      return;
+    }
     const originalText = submitButton.textContent;
-    submitButton.disabled = true;
-    submitButton.textContent = "Gerando PDF...";
-    feedback.style.color = "#667085";
-    feedback.textContent = "Gerando o documento preenchido...";
     try {
       await saveLoanPdf(data);
       feedback.style.color = "#027a48";
       feedback.textContent = "PDF do termo de empréstimo gerado com sucesso.";
     } catch (error) {
-      if (error.name === "AbortError") return;
+      if (error.name === "AbortError") {
+        feedback.textContent = "";
+        return;
+      }
       feedback.style.color = "#b42318";
       feedback.textContent = `Não foi possível gerar o PDF: ${error.message}`;
     } finally {

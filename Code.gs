@@ -9,8 +9,14 @@ function doPost(event) {
   try {
     const payload = JSON.parse(event.postData.contents || "{}");
     const fullName = String(payload.nome_completo || "").trim();
+    const matricula = String(payload.matricula || "").trim();
+    const setor = String(payload.setor_ou_operacao || "").trim();
+    const chamado = String(payload.chamado || "").trim();
     const linhas = Array.isArray(payload.linhas) ? payload.linhas : [];
     if (!fullName) throw new Error("O campo nome_completo é obrigatório.");
+    if (!matricula || !/^\d+$/.test(matricula)) throw new Error("O campo matricula deve conter apenas números.");
+    if (!setor) throw new Error("O campo setor_ou_operacao é obrigatório.");
+    if (!chamado || !/^\d+$/.test(chamado)) throw new Error("O campo chamado deve conter apenas números.");
 
     const template = DriveApp.getFileById(TEMPLATE_DOCUMENT_ID);
     const copy = template.makeCopy(`Termo de responsabilidade - ${fullName}`);
@@ -19,12 +25,9 @@ function doPost(event) {
     const document = DocumentApp.openById(copyId);
     const body = document.getBody();
     replacePlaceholder(body, "nome_completo", fullName, false);
-    replacePlaceholder(body, "cpf", payload.cpf, false);
     replacePlaceholder(body, "setor_ou_operacao", payload.setor_ou_operacao, false);
     replacePlaceholder(body, "cargo", payload.cargo, false);
-    replacePlaceholder(body, "email_profissional", payload.email_profissional, false);
     replacePlaceholder(body, "email_pessoal", payload.email_pessoal, false);
-    replaceManagerPlaceholder(body, payload.gestor_que_aprovou);
     replacePlaceholder(body, "emprestimo_dia", payload.emprestimo_dia, true);
     replacePlaceholder(body, "emprestimo_mes", payload.emprestimo_mes, true);
     replacePlaceholder(body, "emprestimo_ano", payload.emprestimo_ano, true);
@@ -51,7 +54,7 @@ function doPost(event) {
 
     return jsonResponse({
       ok: true,
-      fileName: `termo-responsabilidade-${slugify(fullName)}.pdf`,
+      fileName: `${matricula}_${sanitizeFileNamePart(setor)}_${chamado}.pdf`.replace(/\s+/g, ""),
       pdfBase64: Utilities.base64Encode(pdf.getBytes()),
     });
   } catch (error) {
@@ -61,6 +64,13 @@ function doPost(event) {
       try { DriveApp.getFileById(copyId).setTrashed(true); } catch (e) {}
     }
   }
+}
+
+function sanitizeFileNamePart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[\\/:*?"<>|]/g, "");
 }
 
 function slugify(value) {
@@ -134,22 +144,6 @@ function replaceLiteralPlaceholder(body, placeholder, value, underline) {
     : placeholder;
   const match = body.findText(pattern);
   replaceMatch(body, match, replacement, underline, () => body.findText(pattern));
-}
-
-function replaceManagerPlaceholder(body, value) {
-  const manager = String(value || "");
-  const replacement = manager + "_".repeat(Math.max(34 - manager.length, 0));
-  let match = body.findText("\\{\\{gestor_que_aprovou\\}\\}");
-
-  while (match) {
-    const text = match.getElement().asText();
-    const start = match.getStartOffset();
-    const end = match.getEndOffsetInclusive();
-    text.deleteText(start, end);
-    text.insertText(start, replacement);
-    text.setUnderline(start, start + replacement.length - 1, true);
-    match = body.findText("\\{\\{gestor_que_aprovou\\}\\}");
-  }
 }
 
 function replaceMatch(body, match, replacement, underline, findNext) {
