@@ -584,24 +584,55 @@ async function fillComodatoReturnPdf(pdf, pages, data, font, bold) {
     throw new Error("Não foi encontrada a seção PROTOCOLO DE ENTREGA neste termo de COMODATO.");
   }
 
-  const protocolPage = pdf.getPages()[protocolIndex];
-  const protocolData = pages[protocolIndex];
-  const insert = (text, x, y, size = 9, useBold = false) => {
-    protocolPage.drawText(text, { x, y, size, font: useBold ? bold : font, color: rgb(0, 0, 0) });
-  };
+  // Descobre a coordenada (altura) do título "PROTOCOLO DE ENTREGA"
+  const protocolAnchor = findLineAnchor(pages[protocolIndex].items, "PROTOCOLO DE ENTREGA");
+  // O eixo Y no PDF começa em 0 no rodapé e sobe. Adicionamos uma margem de +10 para pegar da linha do título para baixo.
+  const protocolY = protocolAnchor ? protocolAnchor.y + 10 : Infinity;
 
-  const option = findConditionOption(protocolData.items, data.condition);
-  if (option) {
-    const punctuation = findParenthesisPositions(protocolData.items, option);
+  // 1. Procura a opção de condição a partir da página do protocolo até o final do documento
+  let option = null;
+  let optionPageIndex = protocolIndex;
+  let optionPageData = null;
+
+  for (let i = protocolIndex; i < pages.length; i++) {
+    // Na página do protocolo, ignora os parágrafos que estão acima do título "PROTOCOLO DE ENTREGA"
+    const itemsToSearch = i === protocolIndex
+      ? pages[i].items.filter(item => item.y <= protocolY)
+      : pages[i].items;
+
+    const foundOption = findConditionOption(itemsToSearch, data.condition);
+    if (foundOption) {
+      option = foundOption;
+      optionPageIndex = i;
+      optionPageData = { items: itemsToSearch }; 
+      break;
+    }
+  }
+
+  // 2. Desenha o "X" na página correta onde a opção foi encontrada
+  if (option && optionPageData) {
+    const targetPage = pdf.getPages()[optionPageIndex];
+    const punctuation = findParenthesisPositions(optionPageData.items, option);
     const open = punctuation.filter((item) => item.character === "(").pop();
     const close = punctuation.find((item) => item.character === ")" && (!open || item.x > open.x));
+    
+    // Se achar os parênteses, centraliza. Se não achar perfeitamente, posiciona à esquerda do texto (fallback seguro)
     const center = open && close
       ? (open.x + close.x + close.width) / 2
       : option.x - 8.5;
+      
     const xWidth = bold.widthOfTextAtSize("X", 11.5);
-    insert("X", center - xWidth / 2, option.y, 11.5, true);
+    
+    targetPage.drawText("X", { 
+      x: center - xWidth / 2, 
+      y: option.y, 
+      size: 11.5, 
+      font: bold, 
+      color: rgb(0, 0, 0) 
+    });
   }
 
+  // 3. Preenche a Data da devolução
   const dataPageIndex = findPage(pages, "Data da devolução:", protocolIndex + 1);
   if (dataPageIndex >= 0) {
     const dataPage = pdf.getPages()[dataPageIndex];
@@ -612,6 +643,7 @@ async function fillComodatoReturnPdf(pdf, pages, data, font, bold) {
     insertAfterLabel(dataPage, dataPageItems, "Data da devolução:", data.date, dataInsert, ["devolução:"]);
   }
 
+  // 4. Preenche o Responsável pelo recebimento
   const receiverPageIndex = findPage(pages, "Responsável pelo recebimento:", protocolIndex + 1);
   if (receiverPageIndex >= 0) {
     const receiverPage = pdf.getPages()[receiverPageIndex];
